@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>城市 · 3D 沙盘</title>
+    <style>
+        :root {
+            --panel-bg: rgba(15, 20, 30, 0.75);
+            --panel-border: rgba(255, 255, 255, 0.15);
+            --panel-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            --text-main: #f0f4f8;
+            --text-sub: #a0aec0;
+            --btn-bg: rgba(255, 255, 255, 0.08);
+            --btn-hover: rgba(255, 255, 255, 0.2);
+            --btn-active: rgba(80, 160, 255, 0.8);
+            --btn-active-shadow: 0 0 12px rgba(80, 160, 255, 0.6);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            background-color: #0b0f14;
+            color: var(--text-main);
+            width: 100vw;
+            height: 100vh;
+            /* 解决移动端 100vh 兼容问题 */
+            height: 100dvh; 
+        }
+
+        #app {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            outline: none;
+        }
+
+        /* 错误提示面板 */
+        #error-box {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(220, 38, 38, 0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            z-index: 999;
+            width: 80%;
+            max-width: 400px;
+            text-align: center;
+            font-size: 14px;
+            word-break: break-all;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+
+        /* 控制面板 */
+        .control-panel {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            width: 320px;
+            padding: 24px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            box-shadow: var(--panel-shadow);
+            z-index: 10;
+            transition: transform 0.3s ease;
+        }
+
+        .control-panel h1 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            background: linear-gradient(90deg, #fff, #a0c4ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .control-panel p.subtitle {
+            font-size: 0.8rem;
+            color: var(--text-sub);
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .button-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .btn {
+            flex: 1;
+            min-width: 80px;
+            padding: 10px 12px;
+            background: var(--btn-bg);
+            border: 1px solid transparent;
+            border-radius: 8px;
+            color: var(--text-main);
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn:hover {
+            background: var(--btn-hover);
+        }
+
+        .btn.active {
+            background: var(--btn-active);
+            box-shadow: var(--btn-active-shadow);
+            font-weight: 600;
+        }
+
+        /* 右下角状态栏 */
+        .status-bar {
+            position: absolute;
+            bottom: 24px;
+            right: 24px;
+            padding: 12px 20px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--panel-border);
+            border-radius: 30px;
+            box-shadow: var(--panel-shadow);
+            font-size: 0.85rem;
+            color: var(--text-main);
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            pointer-events: none;
+        }
+
+        .status-bar .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #fbbf24;
+            box-shadow: 0 0 8px #fbbf24;
+            transition: background 0.5s, box-shadow 0.5s;
+        }
+
+        @media (max-width: 768px) {
+            .control-panel {
+                top: 16px;
+                left: 16px;
+                width: calc(100% - 32px);
+                max-width: 360px;
+                padding: 16px;
+            }
+            .control-panel h1 { font-size: 1.2rem; }
+            .control-panel p.subtitle { font-size: 0.75rem; margin-bottom: 12px; }
+            .btn { padding: 8px 10px; font-size: 0.8rem; min-width: 60px; }
+            .status-bar { bottom: 16px; right: 16px; padding: 8px 16px; font-size: 0.75rem; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- 错误捕获 UI -->
+        <div id="error-box"></div>
+
+        <div class="control-panel">
+            <h1>城市 · 3D 沙盘</h1>
+            <p class="subtitle">可交互的等距视角城市模型。拖动旋转视角，双指缩放，观察街区、河流与天际线。</p>
+            
+            <div class="button-group">
+                <button class="btn active" data-mode="sunrise">☀ 日出</button>
+                <button class="btn" data-mode="sunset">🌇 黄昏</button>
+                <button class="btn" data-mode="night">🌙 夜景</button>
+            </div>
+            <div class="button-group">
+                <button class="btn" data-view="top">俯瞰</button>
+                <button class="btn" data-view="iso">等距视角</button>
+                <button class="btn" data-view="reset">重置视角</button>
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <div class="dot" id="status-dot"></div>
+            <span id="status-text">日出 · 金色晨光 ｜ 拖动旋转</span>
+        </div>
+    </div>
+
+    <!-- 捕获错误直接显示在屏幕上 -->
+    <script>
+        window.onerror = function(msg, url, line, col, error) {
+            const errorBox = document.getElementById('error-box');
+            if (!errorBox) return;
+            errorBox.style.display = 'block';
+            errorBox.innerHTML = `<strong>运行出错了 😭</strong><br><br>${msg}<br><br>请检查网络是否能访问外网，或更换浏览器。`;
+            return false;
+        };
+        window.addEventListener('unhandledrejection', function(event) {
+            const errorBox = document.getElementById('error-box');
+            if (!errorBox) return;
+            errorBox.style.display = 'block';
+            errorBox.innerHTML = `<strong>资源加载失败 😭</strong><br><br>${event.reason ? event.reason.message : '网络加载超时'}<br><br>这通常是因为国内网络无法连接到 Three.js 的 CDN 服务器。请尝试开启科学上网，或者将代码换成国内镜像源。`;
+        });
+    </script>
+
+    <!-- 使用更稳定的 unpkg 和 esm.sh 作为模块地址 -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // 检查 WebGL 支持
+        function isWebGLAvailable() {
+            try {
+                const canvas = document.createElement('canvas');
+                return !!(window.WebGLRenderingContext && (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
+            } catch (e) {
+                return false;
+            }
+        }
+
+        if (!isWebGLAvailable()) {
+            document.getElementById('error-box').style.display = 'block';
+            document.getElementById('error-box').innerHTML = '<strong>当前环境不支持 WebGL</strong><br><br>你的浏览器或手机环境可能不支持 3D 渲染，请更换 Chrome/Safari 浏览器重试。';
+            throw new Error("WebGL not supported");
+        }
+
+        // ==========================================
+        // 1. 基础初始化
+        // ==========================================
+        const container = document.getElementById('app');
+        const scene = new THREE.Scene();
+        
+        const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 1, 1000);
+        const cameraDistance = 42;
+        const isoAngle = Math.PI / 4;
+        camera.position.set(
+            cameraDistance * Math.sin(isoAngle) * 0.8,
+            cameraDistance * Math.cos(isoAngle) * 1.2,
+            cameraDistance * Math.cos(isoAngle) * 1.2
+        );
+
+        const renderer = new THREE.WebGLRenderer({ 
+            antialias: true, 
+            alpha: false,
+            powerPreference: "high-performance" // 移动端优化
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        // 限制最大像素比，防止手机端发热卡顿
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        container.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2.1;
+        controls.minDistance = 15;
+        controls.maxDistance = 80;
+        controls.target.set(0, 0, 0);
+        
+        // 移动端手势：单指旋转，双指缩放
+        controls.touches.ONE = THREE.TOUCH.ROTATE;
+        controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
+
+        // ==========================================
+        // 2. 光照设置
+        // ==========================================
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+        scene.add(hemiLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        dirLight.position.set(20, 30, 15);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 80;
+        dirLight.shadow.camera.left = -25;
+        dirLight.shadow.camera.right = 25;
+        dirLight.shadow.camera.top = 25;
+        dirLight.shadow.camera.bottom = -25;
+        dirLight.shadow.bias = -0.0005;
+        scene.add(dirLight);
+
+        const pointLight = new THREE.PointLight(0xffaa00, 0, 50);
+        pointLight.position.set(0, 10, 0);
+        scene.add(pointLight);
+
+        // ==========================================
+        // 3. 材质与工具
+        // ==========================================
+        const materials = {
+            base: new THREE.MeshStandardMaterial({ color: 0x2a3b4c, roughness: 0.8, metalness: 0.2 }),
+            ground: new THREE.MeshStandardMaterial({ color: 0x2e4a2b, roughness: 0.9 }),
+            road: new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.8 }),
+            sidewalk: new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.9 }),
+            water: new THREE.MeshPhysicalMaterial({
+                color: 0x1a5b82,
+                transparent: true,
+                opacity: 0.85,
+                roughness: 0.1,
+                metalness: 0.2,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.1
+            }),
+            buildingConcrete: new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.7 }),
+            treeTrunk: new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 1.0 }),
+            treeLeaves: new THREE.MeshStandardMaterial({ color: 0x2d6a2d, roughness: 0.9 }),
+            lampPost: new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.8 }),
+            lampLight: new THREE.MeshStandardMaterial({ color: 0xffdd88, emissive: 0xffaa00, emissiveIntensity: 0 }),
+            towerBody: new THREE.MeshStandardMaterial({ color: 0xe0e0e0, roughness: 0.5 }),
+            towerSphere: new THREE.MeshStandardMaterial({ color: 0xcc2244, roughness: 0.3, metalness: 0.6, emissive: 0x440011 }),
+            boatHull: new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.6 }),
+            boatCabin: new THREE.MeshStandardMaterial({ color: 0x336699, roughness: 0.5 }),
+        };
+
+        const buildingMats = [
+            new THREE.MeshStandardMaterial({ color: 0x7a8b9e, roughness: 0.4, metalness: 0.7 }),
+            new THREE.MeshStandardMaterial({ color: 0xa0b0c0, roughness: 0.6, metalness: 0.3 }),
+            new THREE.MeshStandardMaterial({ color: 0xc0a080, roughness: 0.7, metalness: 0.1 }),
+            new THREE.MeshStandardMaterial({ color: 0x505860, roughness: 0.5, metalness: 0.8 }),
+            new THREE.MeshStandardMaterial({ color: 0x6a8090, roughness: 0.3, metalness: 0.9 }),
+            new THREE.MeshStandardMaterial({ color: 0xd0d0d0, roughness: 0.6, metalness: 0.2 }),
+        ];
+
+        function createWindowTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#222';
+            ctx.fillRect(0, 0, 128, 256);
+            ctx.fillStyle = '#557';
+            for (let y = 8; y < 256; y += 16) {
+                for (let x = 8; x < 128; x += 16) {
+                    ctx.fillRect(x, y, 8, 10);
+                }
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            return texture;
+        }
+        const windowTexture = createWindowTexture();
+
+        const windowEmissiveMat = new THREE.MeshStandardMaterial({
+            map: windowTexture,
+            emissive: 0xffcc66,
+            emissiveMap: windowTexture,
+            emissiveIntensity: 0,
+            roughness: 0.5
+        });
+
+        function createBox(w, h, d, mat, x, y, z, castShadow = true, receiveShadow = true) {
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+            mesh.position.set(x, y, z);
+            mesh.castShadow = castShadow;
+            mesh.receiveShadow = receiveShadow;
+            return mesh;
+        }
+
+        // ==========================================
+        // 4. 构建城市
+        // ==========================================
+        const cityGroup = new THREE.Group();
+        scene.add(cityGroup);
+
+        const BOARD_SIZE = 24;
+        const BOARD_HEIGHT = 1.5;
+        const BOARD_Y = -BOARD_HEIGHT / 2;
+
+        // 底座
+        cityGroup.add(createBox(BOARD_SIZE, BOARD_HEIGHT, BOARD_SIZE, materials.base, 0, BOARD_Y, 0));
+        cityGroup.add(createBox(BOARD_SIZE - 0.2, 0.1, BOARD_SIZE - 0.2, materials.ground, 0, 0, 0, false, true));
+
+        // 河流
+        const riverWidth = 5;
+        const riverZ = 6;
+        const riverGeo = new THREE.PlaneGeometry(BOARD_SIZE - 1, riverWidth);
+        const river = new THREE.Mesh(riverGeo, materials.water);
+        river.rotation.x = -Math.PI / 2;
+        river.position.set(0, 0.06, riverZ);
+        river.receiveShadow = true;
+        cityGroup.add(river);
+
+        // 河岸
+        cityGroup.add(createBox(BOARD_SIZE, 0.2, 1, materials.sidewalk, 0, 0.1, riverZ - riverWidth/2 - 0.5));
+        cityGroup.add(createBox(BOARD_SIZE, 0.2, 1, materials.sidewalk, 0, 0.1, riverZ + riverWidth/2 + 0.5));
+
+        // 道路
+        const roadWidth = 2.5;
+        cityGroup.add(createBox(BOARD_SIZE, 0.05, roadWidth, materials.road, 0, 0.08, -2));
+        cityGroup.add(createBox(BOARD_SIZE, 0.05, roadWidth, materials.road, 0, 0.08, -8));
+        cityGroup.add(createBox(roadWidth, 0.05, BOARD_SIZE, materials.road, -5, 0.08, 0));
+        cityGroup.add(createBox(roadWidth, 0.05, BOARD_SIZE, materials.road, 5, 0.08, 0));
+
+        // 建筑生成
+        const buildingPositions = [
+            [-8, -4], [-11, -4], [-8, -7], [-11, -7], [-8, -10], [-11, -10], [-3, -10], [-8, -13],
+            [-11, -13], [-3, -13], [-8, -16], [-11, -16],
+            [8, -4], [11, -4], [8, -7], [11, -7], [8, -10], [11, -10], [3, -10], [8, -13],
+            [11, -13], [3, -13], [8, -16], [11, -16], [14, -4], [14, -7], [14, -10],
+            [0, -4], [-2, -7], [2, -7], [0, -10], [-2, -13], [2, -13], [0, -16]
+        ];
+
+        function createBuilding(x, z, w, h, d, matIndex) {
+            const group = new THREE.Group();
+            group.position.set(x, 0, z);
+            const mat = buildingMats[matIndex % buildingMats.length];
+            const mainBody = createBox(w, h, d, mat, 0, h/2, 0);
+            group.add(mainBody);
+
+            const windowH = h - 0.4;
+            if (windowH > 0.5) {
+                const windowMat = windowEmissiveMat.clone();
+                windowMat.map = windowTexture.clone();
+                windowMat.map.repeat.set(w * 1.5, h * 1.5);
+                windowMat.map.needsUpdate = true;
+                
+                const windowMesh = createBox(w + 0.02, windowH, d + 0.02, windowMat, 0, h/2, 0, false, false);
+                group.add(windowMesh);
+                mainBody.userData.windowMat = windowMat;
+            }
+            return group;
+        }
+
+        buildingPositions.forEach(([x, z]) => {
+            const w = 1.2 + Math.random() * 1.5;
+            const d = 1.2 + Math.random() * 1.5;
+            const h = 2 + Math.random() * 8;
+            cityGroup.add(createBuilding(x, z, w, h, d, Math.floor(Math.random() * buildingMats.length)));
+        });
+
+        // 地标电视塔
+        const towerGroup = new THREE.Group();
+        towerGroup.position.set(2, 0, -11);
+        const baseMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.8, 2, 8), materials.towerBody);
+        baseMesh.position.y = 1; baseMesh.castShadow = true; towerGroup.add(baseMesh);
+        const body1Mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.8, 5, 8), materials.towerBody);
+        body1Mesh.position.y = 4.5; body1Mesh.castShadow = true; towerGroup.add(body1Mesh);
+        const sphere1Mesh = new THREE.Mesh(new THREE.SphereGeometry(0.9, 16, 16), materials.towerSphere);
+        sphere1Mesh.position.y = 7.5; sphere1Mesh.castShadow = true; towerGroup.add(sphere1Mesh);
+        const body2Mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 3, 8), materials.towerBody);
+        body2Mesh.position.y = 9.5; body2Mesh.castShadow = true; towerGroup.add(body2Mesh);
+        const sphere2Mesh = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 16), materials.towerSphere);
+        sphere2Mesh.position.y = 11.5; sphere2Mesh.castShadow = true; towerGroup.add(sphere2Mesh);
+        const antennaMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.1, 4, 8), materials.lampPost);
+        antennaMesh.position.y = 13.5; antennaMesh.castShadow = true; towerGroup.add(antennaMesh);
+        cityGroup.add(towerGroup);
+
+        // 树木和路灯
+        function createTree(x, z) {
+            const group = new THREE.Group();
+            group.position.set(x, 0, z);
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.15, 0.8), materials.treeTrunk);
+            trunk.position.y = 0.4; trunk.castShadow = true; group.add(trunk);
+            const leaves = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.2, 6), materials.treeLeaves);
+            leaves.position.y = 1.2; leaves.castShadow = true; group.add(leaves);
+            return group;
+        }
+        function createLamp(x, z) {
+            const group = new THREE.Group();
+            group.position.set(x, 0, z);
+            const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.5), materials.lampPost);
+            post.position.y = 0.75; post.castShadow = true; group.add(post);
+            const lightMat = materials.lampLight.clone();
+            const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), lightMat);
+            bulb.position.y = 1.5; group.add(bulb);
+            group.userData.lightMat = lightMat;
+            return group;
+        }
+
+        const propsGroup = new THREE.Group();
+        for (let x = -10; x <= 10; x += 2) {
+            if (Math.abs(x) > 3) {
+                propsGroup.add(createTree(x, riverZ - riverWidth/2 - 0.2));
+                propsGroup.add(createTree(x, riverZ + riverWidth/2 + 0.2));
+            }
+        }
+        for (let z = -16; z <= 4; z += 3) {
+            if (Math.abs(z - (-2)) > 2 && Math.abs(z - (-8)) > 2) {
+                propsGroup.add(createTree(-3.8, z));
+                propsGroup.add(createTree(3.8, z));
+            }
+        }
+        for (let x = -10; x <= 10; x += 4) {
+            if (Math.abs(x) > 3) {
+                propsGroup.add(createLamp(x, -2.5));
+                propsGroup.add(createLamp(x, -7.5));
+            }
+        }
+        cityGroup.add(propsGroup);
+
+        // 船
+        const boats = [];
+        for (let i = 0; i < 3; i++) {
+            const boatGroup = new THREE.Group();
+            const hull = createBox(1.5, 0.3, 0.6, materials.boatHull, 0, 0.15, 0);
+            const cabin = createBox(0.6, 0.4, 0.4, materials.boatCabin, -0.2, 0.5, 0);
+            boatGroup.add(hull, cabin);
+            boatGroup.position.set(-10 + i * 10, 0.1, riverZ + (Math.random() - 0.5) * 2);
+            boatGroup.userData.speed = 0.02 + Math.random() * 0.02;
+            boats.push(boatGroup);
+            cityGroup.add(boatGroup);
+        }
+
+        // 云
+        const cloudsGroup = new THREE.Group();
+        const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+        for (let i = 0; i < 8; i++) {
+            const cloud = new THREE.Group();
+            cloud.add(new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 8), cloudMat));
+            const p2 = new THREE.Mesh(new THREE.SphereGeometry(1.2, 8, 8), cloudMat);
+            p2.position.set(1.2, 0.2, 0);
+            const p3 = new THREE.Mesh(new THREE.SphereGeometry(0.8, 8, 8), cloudMat);
+            p3.position.set(-1.2, -0.1, 0.5);
+            cloud.add(p2, p3);
+            cloud.position.set((Math.random() - 0.5) * 40, 12 + Math.random() * 5, (Math.random() - 0.5) * 40);
+            cloud.scale.setScalar(0.8 + Math.random() * 0.5);
+            cloudsGroup.add(cloud);
+        }
+        scene.add(cloudsGroup);
+
+        // ==========================================
+        // 5. 环境模式
+        // ==========================================
+        const modes = {
+            sunrise: { name: '日出 · 金色晨光', bgColor: 0xa8c8e8, fogColor: 0xa8c8e8, fogDensity: 0.015, hemiColor: 0xcceeff, dirColor: 0xffcc88, dirIntensity: 1.2, ambientIntensity: 0.6, waterColor: 0x3a8bb8, windowEmissive: 0x000000, lampEmissive: 0.0, pointIntensity: 0.0, dotColor: '#fbbf24', dotShadow: '#fbbf24' },
+            sunset: { name: '黄昏 · 暖红余晖', bgColor: 0xd87050, fogColor: 0xd87050, fogDensity: 0.02, hemiColor: 0xffaa66, dirColor: 0xff6633, dirIntensity: 1.5, ambientIntensity: 0.4, waterColor: 0xa04050, windowEmissive: 0x553300, lampEmissive: 0.5, pointIntensity: 0.5, dotColor: '#f87171', dotShadow: '#f87171' },
+            night: { name: '夜景 · 璀璨灯火', bgColor: 0x0b0f1a, fogColor: 0x0b0f1a, fogDensity: 0.03, hemiColor: 0x223355, dirColor: 0x445588, dirIntensity: 0.3, ambientIntensity: 0.15, waterColor: 0x0a2030, windowEmissive: 0xffaa00, lampEmissive: 1.0, pointIntensity: 1.0, dotColor: '#60a5fa', dotShadow: '#60a5fa' }
+        };
+
+        let currentMode = 'sunrise';
+        let targetMode = modes.sunrise;
+        let transitionProgress = 1;
+        let prevMode = modes.sunrise;
+
+        function updateEmissiveMaterials(emissiveHex, lampIntensity) {
+            cityGroup.traverse((child) => {
+                if (child.isMesh) {
+                    if (child.userData.windowMat) {
+                        child.userData.windowMat.emissive.setHex(emissiveHex);
+                        child.userData.windowMat.emissiveIntensity = emissiveHex === 0x000000 ? 0 : 1.0;
+                    }
+                    if (child.userData.lightMat) {
+                        child.userData.lightMat.emissiveIntensity = lampIntensity;
+                    }
+                }
+            });
+        }
+
+        function setEnvironment(modeKey) {
+            if (currentMode === modeKey) return;
+            prevMode = { ...modes[currentMode] };
+            targetMode = modes[modeKey];
+            currentMode = modeKey;
+            transitionProgress = 0;
+
+            document.querySelectorAll('[data-mode]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === modeKey);
+            });
+            updateStatusBar(targetMode.name, targetMode.dotColor, targetMode.dotShadow);
+        }
+
+        function updateStatusBar(text, dotColor, dotShadow) {
+            document.getElementById('status-text').innerText = `${text} ｜ 拖动旋转`;
+            const dot = document.getElementById('status-dot');
+            dot.style.background = dotColor;
+            dot.style.boxShadow = `0 0 8px ${dotShadow}`;
+        }
+
+        document.querySelectorAll('[data-mode]').forEach(btn => {
+            btn.addEventListener('click', () => setEnvironment(btn.dataset.mode));
+        });
+
+        // ==========================================
+        // 6. 视角控制
+        // ==========================================
+        let cameraTargetPos = camera.position.clone();
+        let cameraTargetLookAt = controls.target.clone();
+        let isCameraAnimating = false;
+
+        const views = {
+            iso: {
+                pos: new THREE.Vector3(cameraDistance * Math.sin(isoAngle) * 0.8, cameraDistance * Math.cos(isoAngle) * 1.2, cameraDistance * Math.cos(isoAngle) * 1.2),
+                lookAt: new THREE.Vector3(0, 0, 0)
+            },
+            top: {
+                pos: new THREE.Vector3(0, 40, 0.1),
+                lookAt: new THREE.Vector3(0, 0, 0)
+            }
+        };
+
+        function animateCamera(targetPos, targetLookAt, duration = 1000) {
+            cameraTargetPos.copy(targetPos);
+            cameraTargetLookAt.copy(targetLookAt);
+            isCameraAnimating = true;
+            
+            const startTime = performance.now();
+            const startPos = camera.position.clone();
+            const startLookAt = controls.target.clone();
+
+            function updateCameraAnim() {
+                if (!isCameraAnimating) return;
+                const now = performance.now();
+                const progress = Math.min((now - startTime) / duration, 1);
+                const ease = progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+                camera.position.lerpVectors(startPos, cameraTargetPos, ease);
+                controls.target.lerpVectors(startLookAt, cameraTargetLookAt, ease);
+                controls.update();
+
+                if (progress < 1) {
+                    requestAnimationFrame(updateCameraAnim);
+                } else {
+                    isCameraAnimating = false;
+                }
+            }
+            requestAnimationFrame(updateCameraAnim);
+        }
+
+        document.querySelectorAll('[data-view]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const view = btn.dataset.view;
+                if (view === 'iso') animateCamera(views.iso.pos, views.iso.lookAt);
+                else if (view === 'top') animateCamera(views.top.pos, views.top.lookAt);
+                else if (view === 'reset') {
+                    setEnvironment('sunrise');
+                    animateCamera(views.iso.pos, views.iso.lookAt);
+                }
+            });
+        });
+
+        // ==========================================
+        // 7. 动画循环
+        // ==========================================
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const elapsedTime = clock.getElapsedTime();
+
+            if (!isCameraAnimating) controls.update();
+
+            if (transitionProgress < 1) {
+                transitionProgress += delta * 2;
+                if (transitionProgress > 1) transitionProgress = 1;
+                const t = transitionProgress;
+                
+                const currentBg = new THREE.Color(prevMode.bgColor).lerp(new THREE.Color(targetMode.bgColor), t);
+                scene.background = currentBg;
+                
+                if (scene.fog) {
+                    scene.fog.color.copy(currentBg);
+                    scene.fog.density = THREE.MathUtils.lerp(prevMode.fogDensity, targetMode.fogDensity, t);
+                }
+
+                hemiLight.color.lerpColors(new THREE.Color(prevMode.hemiColor), new THREE.Color(targetMode.hemiColor), t);
+                dirLight.color.lerpColors(new THREE.Color(prevMode.dirColor), new THREE.Color(targetMode.dirColor), t);
+                dirLight.intensity = THREE.MathUtils.lerp(prevMode.dirIntensity, targetMode.dirIntensity, t);
+                materials.water.color.lerpColors(new THREE.Color(prevMode.waterColor), new THREE.Color(targetMode.waterColor), t);
+                materials.water.emissive = new THREE.Color(targetMode.waterColor).multiplyScalar(0.1);
+                pointLight.intensity = THREE.MathUtils.lerp(prevMode.pointIntensity, targetMode.pointIntensity, t);
+
+                updateEmissiveMaterials(targetMode.windowEmissive, THREE.MathUtils.lerp(prevMode.lampEmissive, targetMode.lampEmissive, t));
+            }
+
+            boats.forEach(boat => {
+                boat.position.x += boat.userData.speed;
+                if (boat.position.x > 12) boat.position.x = -12;
+        
